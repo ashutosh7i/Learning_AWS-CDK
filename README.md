@@ -198,3 +198,34 @@ Resources
 
 10. Delete your application, Use the CDK CLI cdk destroy command to delete your application. This command deletes the CloudFormation stack associated with your CDK stack, which includes the resources you created.
 
+## Folder structure
+in this project there are various folders containing various resources.
+
+| Folder/File              | Description                                   |
+|--------------------------|-----------------------------------------------|
+| `hello_world`                   | a simple hello world on lambda functions    |
+| `sqs_lambda_worker_construct`                  | a construct for a sqs, dlq and lambda based job processor         |
+| `sqs_dlq_alarm`              | integrating cloudwatch alarms for job failues on sqs dlq             |
+
+## Reusability
+In future, we will need to create similar stack again and again. For example the job processor we created. The core will be same for a lot of micro services. However, the logic could be changed. The configuration could be changed but mostly the core will be same. Now we can either copy paste into new folders or we create a reusable pattern which is actually called a Custom Construct.
+
+instead of 
+```
+Queue
+ ↓
+Lambda
+ ↓
+DLQ
+ ↓
+Alarm
+```
+pattern should be
+```
+new QueueLambdaJobProcessor({
+  name: "whatsapp-send",
+  lambdaCodePath: "workers/whatsapp"
+});
+```
+This is called a Custom Construct.
+
