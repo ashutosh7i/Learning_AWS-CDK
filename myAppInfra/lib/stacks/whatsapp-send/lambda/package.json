@@ -1,0 +1,10 @@
+{
+  "name": "whatsapp-send-handler",
+  "version": "1.0.0",
+  "description": "Lambda handler for whatsapp-send SQS worker",
+  "main": "index.js",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.7.9"
+  }
+}
