@@ -7,26 +7,54 @@ aws CDK is a way to describe infrastructure as code and provision infra using CL
 3. Apps
 
 ### Constructs
-A construct is a defination of services via code, it is a smallest unit for a aws service, a construct represents an aws service or pattern.
-AWS CDK constructs are organized into three levels of abstraction i.e. L1, L2, and L3; which define how infrastructure is provisioned, ranging from direct CloudFormation mapping to pre-configured architectural patterns. They are designed to simplify cloud development by encapsulating boilerplate code, increasing in abstraction level from L1 to L3.
+A construct is a defination of services via code, it is a smallest unit for a aws service, a construct represents an aws service or pattern. A construct is a composable building block in CDK — any node in the infrastructure tree. Constructs can nest inside each other (App → Stack → resources). A construct is **not** always a single AWS service; it can be one resource or many wired together.
+
+Everything in CDK extends `Construct`, including **App** and **Stack**. When docs say "construct," they mean any node in this tree — not only a Lambda or SQS queue.
+
+**Object tree (simplified):**
+```
+App                          ← entry point (bin/*.ts)
+ └── Stack                    ← deployable unit (HelloWorldStack)
+      ├── lambda.Function     ← L2 construct (AWS library)
+      ├── sqs.Queue           ← L2 construct
+      └── CfnOutput           ← L1 construct
+```
+
+#### AWS-provided constructs (L1, L2, L3)
+These levels classify constructs that **AWS ships in `aws-cdk-lib`**. They are not the same as your stack files or custom constructs.
 
 a. Level 1 (L1) - Low-Level Constructs (CFN Resources)
   - Description: These are the lowest-level constructs, directly mapped 1:1 to AWS CloudFormation resources. They are automatically generated from CloudFormation specifications.
   - Characteristics: Known by the Cfn prefix (e.g., CfnBucket), they require configuring every property manually.
   - Use Case: When you need to access new AWS features or resources not yet covered by L2/L3 abstractions.
-    
+  - Example from this repo: `new cdk.CfnOutput(...)` in hello_world.
+
 b. Level 2 (L2) - Mid-Level Constructs (Curated Constructs)
   - Description: These represent AWS resources with higher-level, intent-based APIs and sensible defaults.
   - Characteristics: They offer convenient defaults, boilerplate reduction, and built-in methods for IAM permissions (e.g., grantRead).
   - Use Case: The standard choice for most infrastructure needs (e.g., s3.Bucket), balancing control and convenience.
+  - Examples from this repo: `new lambda.Function(...)`, `new sqs.Queue(...)`, `new cloudwatch.Alarm(...)`.
     
 c. Level 3 (L3) - High-Level Constructs (Patterns)
   - Description: These are "patterns" designed to solve common, complex, multi-resource architectural scenarios, such as creating a VPC with auto-scaling ECS services.
-  - Characteristics: Highly opinionated, they bundle multiple resources into a single component to simplify deployment, such as aws-apigateway.LambdaRestApi.
-  - Use Case: Rapidly deploying full, pre-configured architectural solutions.
+  - Characteristics: Highly opinionated, they bundle multiple resources into a single component to simplify deployment, such as `aws-apigateway.LambdaRestApi`.
+  - Use Case: Rapidly deploying full, pre-configured architectural solutions (AWS-provided only — your `QueueLambdaJobProcessor` would be a **custom** L3-style construct, not from `aws-cdk-lib`).
+
+#### Custom constructs (what you write for reuse)
+A **custom construct** is a class you create that **extends `Construct`** . It bundles multiple L2 resources into a reusable pattern — for example, SQS + DLQ + Lambda + optional CloudWatch alarm.
+
+- **Not deployable on its own** — it must live inside a stack.
+- **Purpose** — reuse the same wiring across multiple microservices with different props.
+- See the [Reusability](#reusability) section below.
+
+| Folder | Description |
+|----------------|---------------------|
+| `hello_world/lib/hello_world-stack.ts` | A **Stack** with L2 constructs inside |
+| `sqs_dlq_alarm/lib/sqs_dlq_alarm-stack.ts` | A **Stack** with multiple L2 constructs wired together |
+| Future `QueueLambdaJobProcessor` class | A **custom construct** — reused inside many stacks |
 
 ### Stacks
-A Stack represents a single CloudFormation template. All resources defined within a stack are provisioned, updated, or deleted as a single unit.
+A Stack represents a single CloudFormation template. All resources defined within a stack are provisioned, updated, or deleted as a single unit. A Stack **is also a construct** — it is the top-level construct that becomes a deployable CloudFormation stack.
   - Purpose: To logically group related resources that should be deployed together.
   - Independent Scaling: Because stacks are independent deployment units, you can use the CDK CLI to deploy one stack (e.g., cdk deploy MyBackendStack) without affecting others in the same app.
 
@@ -35,7 +63,7 @@ The App is the entry point of your CDK program. It doesn't create AWS resources 
   - Purpose: Orchestrates the deployment of multiple stacks and allows them to share resources with each other.
   - Example: If you have a separate "Frontend" stack and "Backend" stack, they would both live inside the same App
 
-> a very userful command is cdk help
+> a very useful command is `cdk help`
 
 ## An interesting image explaining CDK-
 
@@ -51,7 +79,7 @@ The App is the entry point of your CDK program. It doesn't create AWS resources 
 ### Steps
 1. initialize a new project.
   `cdk init app --language typescript`
-it creates a new project,
+it creates a new project, a new App in cdk terms containg one stack with one construct. 
 ```
 # Welcome to your CDK TypeScript project
 
@@ -68,10 +96,19 @@ The `cdk.json` file tells the CDK Toolkit how to execute your app.
 * `npx cdk diff`    compare deployed stack with current state
 * `npx cdk synth`   emits the synthesized CloudFormation template
 ```
-the lib folder contains stacks, we can have more than one stack in project.
-the bin folder contains app, a project can only have one app.
+This scaffolds **one App + one Stack** by default:
+- **`bin/<project>.ts`** — creates `new cdk.App()` and **instantiates** stack(s). This is the entry point CDK runs (via `cdk.json`).
+- **`lib/<project>-stack.ts`** — the **Stack class** lives here. You can add more stack files under `lib/` as the project grows.
 
-2. We usually write code in lib folder, for more configurations we edit the .ts file in bin folder, for example to specify the region and account we want to deploy to, we can edit the .ts file in bin folder.
+A project has **one App** (one `bin/` entry file) but can have **many Stacks**.
+
+#### bin vs lib
+| Folder | Role |
+|--------|------|
+| `bin/` | App entry point — wire up stacks, set `env` (account/region), pass context |
+| `lib/` | Stack classes, custom constructs, and most infra code |
+
+2. We usually write stack and construct code in `lib/`. We edit the `.ts` file in `bin/` to instantiate stacks and configure deployment — for example, to specify the region and account we want to deploy to.
 
 3. Now we write code in that lib folder, creating a lambda function. 
 Let’s take a closer look at the Function construct. Like all constructs, the Function class takes three parameters:
@@ -199,33 +236,76 @@ Resources
 10. Delete your application, Use the CDK CLI cdk destroy command to delete your application. This command deletes the CloudFormation stack associated with your CDK stack, which includes the resources you created.
 
 ## Folder structure
-in this project there are various folders containing various resources.
 
-| Folder/File              | Description                                   |
-|--------------------------|-----------------------------------------------|
-| `hello_world`                   | a simple hello world on lambda functions    |
-| `sqs_lambda_worker_construct`                  | a construct for a sqs, dlq and lambda based job processor         |
-| `sqs_dlq_alarm`              | integrating cloudwatch alarms for job failues on sqs dlq             |
+### This repo (learning layout)
+Each folder below is a **separate CDK app** (its own `cdk.json`, `bin/`, `lib/`). Fine for learning; copy-pasting does not scale for many microservices.
+
+| Folder/File | Description |
+|-------------|-------------|
+| `hello_world` | A simple hello world — one **Stack**, one Lambda (L2) |
+| `sqs_lambda_worker` | SQS + DLQ + Lambda job processor — one **Stack**, multiple L2 constructs |
+| `sqs_dlq_alarm` | Same pattern plus CloudWatch alarm on the DLQ — one **Stack** |
+
+### Recommended layout (as the project grows)
+Consolidate into **one CDK app** with shared custom constructs and one stack per microservice:
+
+```
+project/
+├── bin/
+│   └── app.ts                         # one App, wires all stacks
+├── lib/
+│   ├── constructs/                    # reusable patterns (custom constructs)
+│   │   └── queue-lambda-job-processor.ts
+│   └── stacks/                        # one stack per microservice
+│       └── whatsapp/
+│           ├── whatsapp-stack.ts      # uses the custom construct
+│           └── lambda/
+│               └── index.js           # handler for this service
+├── cdk.json
+└── package.json
+```
+
+**Lambda code placement:** AWS does not require a specific folder. `lambda.Code.fromAsset('path')` accepts any directory. Co-locating handler code next to the stack that deploys it (e.g. `lib/stacks/whatsapp/lambda/`) is a common and clear approach. A top-level `workers/` folder is equally valid — it is a convention, not a rule.
+
+**Stack folders:** A folder per microservice is optional but helpful once a service has a stack file, handler, and tests. A single file per stack (e.g. `lib/stacks/whatsapp-stack.ts`) is also fine.
+
+### Environments (dev / staging / prod)
+Deploy the same stack class with different props or stack names:
+
+```typescript
+const env = app.node.tryGetContext('env') ?? 'dev';
+new WhatsappStack(app, `WhatsappStack-${env}`, { env: { account: '...', region: 'ap-south-1' } });
+```
+
+Deploy with: `cdk deploy WhatsappStack-prod -c env=prod`
+
+For multi-environment pipelines, CDK **Stages** can wrap groups of stacks (see [AWS CDK environments guide](https://docs.aws.amazon.com/cdk/latest/guide/environments.html)).
 
 ## Reusability
-In future, we will need to create similar stack again and again. For example the job processor we created. The core will be same for a lot of micro services. However, the logic could be changed. The configuration could be changed but mostly the core will be same. Now we can either copy paste into new folders or we create a reusable pattern which is actually called a Custom Construct.
 
-instead of 
+We will need the same job processor pattern across many microservices. The core (SQS + DLQ + Lambda + alarm) stays the same; only the handler logic and configuration change.
+
+**Do not copy-paste whole stacks.** Extract the pattern into a **custom construct** (`extends Construct`) and use it inside per-service **stacks** (`extends Stack`).
+
+| | Stack | Custom construct |
+|--|-------|------------------|
+| Extends | `cdk.Stack` | `Construct` |
+| Deployable? | Yes — `cdk deploy MyStack` | No — must live inside a stack |
+| Purpose | Deployment boundary | Reusable pattern |
+
+Instead of repeating this in every stack file:
 ```
-Queue
- ↓
-Lambda
- ↓
-DLQ
- ↓
-Alarm
+Queue → Lambda → DLQ → Alarm
 ```
-pattern should be
-```
-new QueueLambdaJobProcessor({
-  name: "whatsapp-send",
-  lambdaCodePath: "workers/whatsapp"
+
+Use a custom construct:
+```typescript
+// inside a stack
+new QueueLambdaJobProcessor(this, 'WhatsappJobs', {
+  name: 'whatsapp-send',
+  lambdaCodePath: path.join(__dirname, 'lambda'),
 });
 ```
-This is called a Custom Construct.
+
+Each microservice gets its own stack; all stacks share the same custom construct from `lib/constructs/`.
 
