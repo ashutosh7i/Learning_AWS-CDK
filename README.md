@@ -50,7 +50,7 @@ The App is the entry point of your CDK program. It doesn't create AWS resources 
 
 ### Steps
 1. initialize a new project.
-  `$ cdk init app --language typescript`
+  `cdk init app --language typescript`
 it creates a new project,
 ```
 # Welcome to your CDK TypeScript project
