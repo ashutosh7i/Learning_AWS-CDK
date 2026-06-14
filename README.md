@@ -238,13 +238,15 @@ Resources
 ## Folder structure
 
 ### This repo (learning layout)
-Each folder below is a **separate CDK app** (its own `cdk.json`, `bin/`, `lib/`). Fine for learning; copy-pasting does not scale for many microservices.
+Most folders below are **separate CDK apps** (each has its own `cdk.json`, `bin/`, `lib/`). `myAppInfra` is the consolidated app that applies the reusability pattern from the section below.
 
-| Folder/File | Description |
-|-------------|-------------|
-| `hello_world` | A simple hello world — one **Stack**, one Lambda (L2) |
-| `sqs_lambda_worker` | SQS + DLQ + Lambda job processor — one **Stack**, multiple L2 constructs |
+| Folder | Description |
+|--------|-------------|
+| `hello_world` | Simple hello world — one **Stack**, one `lambda.Function` (L2) with a function URL |
+| `sqs_lambda_worker` | SQS + DLQ + Lambda job processor — one **Stack**, `lambda.Code.fromAsset` |
 | `sqs_dlq_alarm` | Same pattern plus CloudWatch alarm on the DLQ — one **Stack** |
+| `lambda_using_NodejsFunction` | Simple Lambda using `NodejsFunction` — esbuild bundling, no explicit `runtime` |
+| `myAppInfra` | One app with a reusable **`SqsLambdaWorker`** custom construct and a **`WhatsappSendStack`** example |
 
 ### Recommended layout (as the project grows)
 Consolidate into **one CDK app** with shared custom constructs and one stack per microservice:
@@ -308,4 +310,10 @@ new QueueLambdaJobProcessor(this, 'WhatsappJobs', {
 ```
 
 Each microservice gets its own stack; all stacks share the same custom construct from `lib/constructs/`.
+
+## Lambda with NodejsFunction
+
+For standalone Lambdas, `lambda.Function` requires you to set `runtime`, `handler`, and package code via `fromInline` or `fromAsset`. **`NodejsFunction`** (`aws-cdk-lib/aws-lambda-nodejs`) is an alternative: you point it at a TypeScript entry file (e.g. `lib/handler.ts`), and CDK bundles it with **esbuild** at synth time — no explicit runtime, and npm dependencies are bundled automatically.
+
+See [`lambda_using_NodejsFunction/`](lambda_using_NodejsFunction/) for a minimal example. Requires `esbuild` as a dev dependency. This complements `fromAsset` (used in `myAppInfra` stack handlers with their own `package.json`) — use `NodejsFunction` when you want bundling without managing a separate `node_modules` folder per handler.
 
